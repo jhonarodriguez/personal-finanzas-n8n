@@ -1,0 +1,102 @@
+# ============================================================
+# Docker Compose — Agente Personal de Finanzas
+# ============================================================
+# Servicios:
+#   1. postgres  → Base de datos para configuración y movimientos
+#   2. n8n       → Motor de automatización (workflows)
+#
+# Uso:
+#   docker compose up -d          → Levantar todo
+#   docker compose down           → Detener todo
+#   docker compose logs -f n8n    → Ver logs de n8n en tiempo real
+# ============================================================
+
+services:
+  # ----------------------------------------------------------
+  # PostgreSQL — Base de datos relacional
+  # ----------------------------------------------------------
+  # ¿Por qué PostgreSQL?
+  #   - Es robusto, gratuito y el estándar en producción.
+  #   - n8n lo soporta nativamente como backend.
+  #   - Nos permite hacer queries SQL complejos para reportes.
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: finanzas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Persistencia: los datos sobreviven reinicios del contenedor
+      - postgres_data:/var/lib/postgresql/data
+      # Script de inicialización: crea tablas al primer arranque
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # n8n — Motor de automatización / workflows
+  # ----------------------------------------------------------
+  # ¿Qué es n8n?
+  #   - Plataforma open-source de automatización (similar a Zapier).
+  #   - Permite crear flujos visuales que conectan APIs, DBs, bots.
+  #   - Aquí orquesta TODO: bot → lógica → BD → Google Sheets.
+  # ----------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: finanzas-n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- Configuración general de n8n ---
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: ${N8N_PORT:-5678}
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+
+      # --- n8n usa PostgreSQL como backend interno ---
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # --- Seguridad: autenticación básica para el panel web ---
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+
+      # --- Timezone para que las fechas/cron sean correctas ---
+      GENERIC_TIMEZONE: ${TIMEZONE:-America/Bogota}
+      TZ: ${TIMEZONE:-America/Bogota}
+
+      # --- Credenciales de servicios externos (inyectadas vía .env) ---
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    volumes:
+      # Persistencia de datos internos de n8n (workflows, credenciales cifradas)
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+
+# ----------------------------------------------------------
+# Volúmenes persistentes
+# ----------------------------------------------------------
+# Docker maneja estos volúmenes. Los datos NO se pierden
+# aunque hagas `docker compose down`. Solo se borran con
+# `docker compose down -v` (¡cuidado!).
+# ----------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  n8n_data:
+    driver: local

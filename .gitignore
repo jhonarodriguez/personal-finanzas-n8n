@@ -1,0 +1,35 @@
+# ============================================================
+# .gitignore — Agente Personal de Finanzas
+# ============================================================
+
+# --- Variables de entorno con secretos ---
+.env
+
+# --- Datos de contenedores Docker ---
+postgres_data/
+n8n_data/
+
+# --- Credenciales de Google ---
+credentials.json
+token.pickle
+*.pickle
+
+# --- Logs ---
+logs/
+*.log
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Temporales ---
+*.tmp
+*.bak
+__pycache__/
