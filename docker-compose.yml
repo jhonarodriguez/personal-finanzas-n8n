@@ -2,13 +2,15 @@
 # Docker Compose — Agente Personal de Finanzas
 # ============================================================
 # Servicios:
-#   1. postgres  → Base de datos para configuración y movimientos
-#   2. n8n       → Motor de automatización (workflows)
+#   1. postgres       → Base de datos para configuración y movimientos
+#   2. n8n            → Motor de automatización (workflows)
+#   3. evolution-api  → WhatsApp integration via Baileys
 #
 # Uso:
-#   docker compose up -d          → Levantar todo
-#   docker compose down           → Detener todo
-#   docker compose logs -f n8n    → Ver logs de n8n en tiempo real
+#   docker compose up -d               → Levantar todo
+#   docker compose down                → Detener todo
+#   docker compose logs -f n8n         → Ver logs de n8n
+#   docker compose logs -f evolution-api → Ver logs de EvolutionAPI
 # ============================================================
 
 services:
@@ -18,6 +20,7 @@ services:
   # ¿Por qué PostgreSQL?
   #   - Es robusto, gratuito y el estándar en producción.
   #   - n8n lo soporta nativamente como backend.
+  #   - EvolutionAPI lo usa para persistir sesiones y mensajes.
   #   - Nos permite hacer queries SQL complejos para reportes.
   # ----------------------------------------------------------
   postgres:
@@ -88,6 +91,67 @@ services:
     ports:
       - "${N8N_PORT:-5678}:5678"
 
+  # ----------------------------------------------------------
+  # EvolutionAPI — WhatsApp Integration via Baileys
+  # ----------------------------------------------------------
+  # ¿Qué es EvolutionAPI?
+  #   - API REST open-source para WhatsApp (protocolo Baileys).
+  #   - Permite enviar/recibir mensajes de WhatsApp vía HTTP.
+  #   - Se conecta escaneando un QR, como WhatsApp Web.
+  #   - Envía webhooks a n8n cuando llega un mensaje nuevo.
+  #
+  # Panel de gestión:
+  #   https://evolution.jhonatan-rodriguez.dev/manager
+  #
+  # API docs:
+  #   https://doc.evolution-api.com/v2
+  # ----------------------------------------------------------
+  evolution-api:
+    image: atendai/evolution-api:v2.2.3
+    container_name: finanzas-evolution
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- Server ---
+      SERVER_URL: https://evolution.jhonatan-rodriguez.dev
+      SERVER_PORT: 8080
+
+      # --- Auth ---
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+
+      # --- Database (misma instancia PostgreSQL, DB separada) ---
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/evolution_db
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+
+      # --- Cache local (sin Redis, suficiente para uso personal) ---
+      CACHE_LOCAL_ENABLED: "true"
+      CACHE_REDIS_ENABLED: "false"
+
+      # --- Logs (WARN en producción, cambiar a DEBUG si hay problemas) ---
+      LOG_LEVEL: WARN
+
+      # --- Webhook global desactivado (se configura por instancia) ---
+      WEBHOOK_GLOBAL_ENABLED: "false"
+
+      # --- Timezone ---
+      TZ: America/Bogota
+    volumes:
+      # Persistencia: sesiones de WhatsApp, media, datos de instancias
+      # Sin esto, perderías la sesión de WhatsApp en cada reinicio
+      # y tendrías que escanear el QR de nuevo.
+      - evolution_instances:/evolution/instances
+    ports:
+      - "${EVOLUTION_PORT:-8080}:8080"
+
 # ----------------------------------------------------------
 # Volúmenes persistentes
 # ----------------------------------------------------------
@@ -99,4 +163,6 @@ volumes:
   postgres_data:
     driver: local
   n8n_data:
+    driver: local
+  evolution_instances:
     driver: local
