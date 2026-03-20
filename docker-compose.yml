@@ -107,7 +107,7 @@ services:
   #   https://doc.evolution-api.com/v2
   # ----------------------------------------------------------
   evolution-api:
-    image: atendai/evolution-api:v2.2.3
+    image: evoapicloud/evolution-api:latest
     container_name: finanzas-evolution
     restart: unless-stopped
     depends_on:
