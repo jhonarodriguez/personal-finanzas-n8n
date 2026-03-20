@@ -85,6 +85,8 @@ services:
 
       # --- Credenciales de servicios externos (inyectadas vía .env) ---
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
     volumes:
       # Persistencia de datos internos de n8n (workflows, credenciales cifradas)
       - n8n_data:/home/node/.n8n
